@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, flash
 from pymysql import connections
 import boto3
 from config import *
@@ -20,17 +20,18 @@ table = 'student'
 # HOME – Create student
 @app.route("/", methods=['GET'])
 def home():
-    return render_template('CreateStd.html')
+    return render_template('Home.html')
 
-
+@app.route("/students/create", methods=['GET'])
+def create_student():
+    return render_template("CreateStd.html")
 
 
 # =======================
-# CREATE – Add Student
+# Create – Add Students
 # =======================
 @app.route("/addstudent", methods=['POST'])
 def add_student():
-
     student_id = request.form['student_id']
     first_name = request.form['first_name']
     last_name = request.form['last_name']
@@ -47,7 +48,8 @@ def add_student():
     cursor = db_conn.cursor()
 
     if student_image.filename == "":
-        return "Please select a file"
+        flash("Please select an image file!", "danger")
+        return redirect("/")
 
     try:
         cursor.execute(insert_sql, (
@@ -58,16 +60,22 @@ def add_student():
         # Upload image to S3
         image_name = f"student-id-{student_id}.jpg"
         s3 = boto3.resource('s3')
-        s3.Bucket(custombucket).put_object(Key=image_name, Body=student_image)
+        s3.Bucket(custombucket).put_object(
+            Key=image_name,
+            Body=student_image,
+            ContentType=student_image.content_type
+        )
+
+        flash(f"Student {first_name} {last_name} added successfully!", "success")
 
     except Exception as e:
-        return str(e)
+        flash(str(e), "danger")
 
     finally:
         cursor.close()
 
-    return render_template('AddStudentOutput.html',
-                           name=f"{first_name} {last_name}")
+    return redirect("/students/create")
+
 
 
 # =======================

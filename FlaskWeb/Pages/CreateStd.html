@@ -45,6 +45,17 @@
     <div class="card w-75">
         <div class="card-header">Add Student</div>
         <div class="card-body">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        <i class="bi bi-info-circle me-2"></i>
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
             <form action="/addstudent" method="POST" enctype="multipart/form-data">
                 <div class="mb-3">
                     <label for="student_id" class="form-label">Student ID</label>
