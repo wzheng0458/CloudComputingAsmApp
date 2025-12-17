@@ -1,0 +1,145 @@
+from flask import Flask, render_template, request, redirect
+from pymysql import connections
+import boto3
+from config import *
+
+app = Flask(__name__)
+
+# RDS connection
+db_conn = connections.Connection(
+    host=customhost,
+    port=3306,
+    user=customuser,
+    password=custompass,
+    db=customdb
+)
+
+table = 'student'
+                
+
+# HOME – Create student
+@app.route("/", methods=['GET'])
+def home():
+    return render_template('CreateStd.html')
+
+
+
+
+# =======================
+# CREATE – Add Student
+# =======================
+@app.route("/addstudent", methods=['POST'])
+def add_student():
+
+    student_id = request.form['student_id']
+    first_name = request.form['first_name']
+    last_name = request.form['last_name']
+    programme = request.form['programme']
+    status = request.form['status']
+    student_image = request.files['student_image']
+
+    insert_sql = f"""
+        INSERT INTO {table}
+        (student_id, first_name, last_name, programme, status)
+        VALUES (%s, %s, %s, %s, %s)
+    """
+
+    cursor = db_conn.cursor()
+
+    if student_image.filename == "":
+        return "Please select a file"
+
+    try:
+        cursor.execute(insert_sql, (
+            student_id, first_name, last_name, programme, status
+        ))
+        db_conn.commit()
+
+        # Upload image to S3
+        image_name = f"student-id-{student_id}.jpg"
+        s3 = boto3.resource('s3')
+        s3.Bucket(custombucket).put_object(Key=image_name, Body=student_image)
+
+    except Exception as e:
+        return str(e)
+
+    finally:
+        cursor.close()
+
+    return render_template('AddStudentOutput.html',
+                           name=f"{first_name} {last_name}")
+
+
+# =======================
+# READ – View All Students
+# =======================
+@app.route("/students")
+def view_students():
+    cursor = db_conn.cursor()
+    cursor.execute("SELECT * FROM student")
+    students = cursor.fetchall()
+    cursor.close()
+    return render_template("ReadAllStd.html", students=students)
+
+
+# =======================
+# READ – View Specific Student
+# =======================
+@app.route("/student/<int:student_id>")
+def view_student(student_id):
+    cursor = db_conn.cursor()
+    cursor.execute(
+        "SELECT * FROM student WHERE student_id=%s",
+        (student_id,)
+    )
+    student = cursor.fetchone()
+    cursor.close()
+
+    if student is None:
+        return "Student not found"
+
+    return render_template("ReadStd.html", student=student)
+
+
+# =======================
+# UPDATE – Edit Student
+# =======================
+@app.route("/edit/<int:student_id>", methods=['GET', 'POST'])
+def edit_student(student_id):
+    cursor = db_conn.cursor()
+
+    if request.method == 'POST':
+        cursor.execute("""
+            UPDATE student
+            SET first_name=%s, last_name=%s, programme=%s, status=%s
+            WHERE student_id=%s
+        """, (
+            request.form['first_name'],
+            request.form['last_name'],
+            request.form['programme'],
+            request.form['status'],
+            student_id
+        ))
+        db_conn.commit()
+        cursor.close()
+        return redirect("/students")
+
+    cursor.execute("SELECT * FROM student WHERE student_id=%s", (student_id,))
+    student = cursor.fetchone()
+    cursor.close()
+    return render_template("UpdateStd.html", student=student)
+
+
+# =======================
+# DELETE – Remove Student
+# =======================
+@app.route("/delete/<int:student_id>")
+def delete_student(student_id):
+    cursor = db_conn.cursor()
+    cursor.execute("DELETE FROM student WHERE student_id=%s", (student_id,))
+    db_conn.commit()
+    cursor.close()
+    return redirect("/students")
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=80, debug=True)
